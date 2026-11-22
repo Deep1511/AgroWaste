@@ -1,0 +1,85 @@
+.service-page-wrapper {
+  max-width: 760px;
+  margin: 20px auto 60px auto;
+  padding: 0 16px;
+}
+
+.service-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.08);
+}
+
+.crop-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.crop-chip-btn {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.crop-chip-btn:hover {
+  border-color: #10b981;
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.crop-chip-btn.active {
+  border-color: #059669;
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
+}
+
+.machinery-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.machine-label-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #334155;
+  transition: all 0.2s ease;
+}
+
+.machine-label-box.checked {
+  border-color: #059669;
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.machine-label-box input[type="checkbox"] {
+  accent-color: #059669;
+  width: 16px;
+  height: 16px;
+}

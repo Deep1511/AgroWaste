@@ -1,0 +1,14 @@
+@import "../LoginPage/style.css";
+
+/* Additional signup-specific styles */
+.form-row-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 500px) {
+  .form-row-grid {
+    grid-template-columns: 1fr;
+  }
+}
