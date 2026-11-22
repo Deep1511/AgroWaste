@@ -40,6 +40,7 @@ const AdminHome = () => {
 
   useEffect(() => {
     getData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAuctionResult = (ele) => {
