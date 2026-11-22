@@ -1,159 +1,105 @@
 const express = require('express');
-const app = express();
-
 const http = require('http');
-const AuctionServer = http.createServer(app);
-
-const {Server} = require('socket.io');
+const { Server } = require('socket.io');
 
 const AuctionModel = require('./models/Auction');
 const RoomModel = require('./models/AuctionRoom');
 
-const MAX_SOCKETS_PER_TAB = 2;
 const socketsPerTab = {};
 
-// const io cannnot emit to all sockets in room so make  it global by var 
-const io = new Server(AuctionServer,{
-    cors :{
-        origin : "*",
-        methods : ["GET","POST"],
-        allowedHeaders : ["my-custom-header"],
-        credentials : true
+function setupAuctionSocket(serverInstance) {
+  const io = new Server(serverInstance, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+      allowedHeaders: ["my-custom-header"],
+      credentials: true
     }
-});
+  });
 
-io.on('connection',(socket)=>{
-
+  io.on('connection', (socket) => {
     const { id: socketId } = socket;
-  const { tabId } = socket.handshake.query;
+    const { tabId } = socket.handshake.query;
 
-    socketsPerTab[tabId] = socketsPerTab[tabId] || 0;
-  socketsPerTab[tabId]++;
-  console.log("A user is Connected", socket.id);
+    if (tabId) {
+      socketsPerTab[tabId] = socketsPerTab[tabId] || 0;
+      socketsPerTab[tabId]++;
+    }
+    console.log("A user connected to Auction socket:", socket.id);
 
-
-  // if (socketsPerTab[tabId] > MAX_SOCKETS_PER_TAB) {
-  //       socket.disconnect();
-  //       return;
-  //     }
-    
-      // // Otherwise, add the socket to the room
-      // socket.join('roomName');
-      
-      // When the socket disconnects, decrement the number of sockets for the tab
-      socket.on('disconnect', () => {
+    socket.on('disconnect', () => {
+      if (tabId && socketsPerTab[tabId]) {
         socketsPerTab[tabId]--;
-      });
-
-  socket.on("join room",async(data)=>{
-    console.log("Room code is ",data);
-    let resp = await RoomModel.findOne({Code : data.Code});
-    console.log(resp);
-    if(resp){
-      console.log("Joined Successfully");
-      socket.join(data.Code);
-      socket.emit("startDetails",resp);
-
-      //Find first bid by admin and send as starting bid
-      let respon = await AuctionModel.findOne({Room :data.Code});
-      if(respon)
-      {
-        socket.emit("starting_bid",respon.Bid);
       }
-      else{
-        socket.emit("starting_bid",0);
+    });
+
+    socket.on("join room", async (data) => {
+      try {
+        console.log("Joining room code:", data?.Code);
+        let resp = await RoomModel.findOne({ Code: data.Code });
+        if (resp) {
+          socket.join(data.Code);
+          socket.emit("startDetails", resp);
+
+          // Find first bid by admin and send as starting bid
+          let respon = await AuctionModel.findOne({ Room: data.Code });
+          if (respon) {
+            socket.emit("starting_bid", respon.Bid);
+          } else {
+            socket.emit("starting_bid", resp.StartBid || 0);
+          }
+
+          // Latest bid is Current Highest bid
+          let res = await AuctionModel.find({ Room: data.Code }).sort({ _id: -1 }).limit(1);
+          if (res && res.length > 0) {
+            socket.emit("curr_bid", res[0]);
+          } else {
+            socket.emit("curr_bid", { Bid: resp.StartBid || 0, User: "Starting Bid", Room: data.Code });
+          }
+
+          // Provide latest three bids
+          let response = await AuctionModel.find({ Room: data.Code }).sort({ _id: -1 }).limit(3);
+          response.reverse();
+          socket.emit("bids", [...response]);
+        } else {
+          socket.emit("room_error", data.Code);
+          console.log("Invalid Room code requested:", data.Code);
+        }
+      } catch (err) {
+        console.error("Error in join room:", err);
       }
-      //latest bid is Current Highest bid
-      let res = await AuctionModel.find({Room:data.Code}).sort({_id:-1}).limit(1);
-      if(res)
-     {
-      console.log(res[0],"This is what we are sending");
-      socket.emit("curr_bid",res[0]);
-    //  res[0].Bid
-    } 
-     else{
-        socket.emit("curr_bid",0);
+    });
+
+    socket.on('send_bid', async (data) => {
+      try {
+        console.log("Bid event received:", data);
+        if (!data.user) {
+          socket.emit("auth_error", { msg: "Authentication required to place bid" });
+        } else {
+          let resp = await AuctionModel.find({ Room: data.Code }).sort({ _id: -1 }).limit(1);
+          let res = resp && resp.length > 0 ? resp[0] : null;
+
+          if ((res && res.Bid < data.bid) || !res) {
+            io.sockets.in(data.Code).emit('receive_bid', { Bid: data.bid, User: data.user, Room: data.Code });
+            io.sockets.in(data.Code).emit("curr_bid", { Bid: data.bid, User: data.user, Room: data.Code });
+            await AuctionModel.create({ Bid: data.bid, User: data.user, Room: data.Code });
+          } else {
+            socket.emit("error_bid", res);
+          }
+        }
+      } catch (err) {
+        console.error("Error in send_bid:", err);
       }
-      //provide latest three bids
+    });
+  });
 
-      let response = await AuctionModel.find({Room : data.Code}).sort({_id:-1}).limit(3);
-      response.reverse();
-      socket.emit("bids",[...response]);
-    }
-    else{
-      socket.emit("room_error",data.Code);
-      // await RoomModel.create({Name :"first",Code : data.Code});
-      console.log("Enter valid Room code");
-    }
-    // io.to(data.Code).emit("receive_bid",{bid:"-30",Code : data.Code,Name:"patel"});
-    // io.sockets.in(data.Code).emit("receive_bid",{bid:"-1",Code : data.Code,Name:"patel"});
-    // socket.to(data.Code).emit("receive_bid",{bid:"-2",Code : data.Code,Name:"patel"});
-  })
+  return io;
+}
 
+// Create standalone HTTP server for backwards-compatibility
+const standaloneApp = express();
+const AuctionServer = http.createServer(standaloneApp);
+setupAuctionSocket(AuctionServer);
 
-  socket.on('send_bid',async(data)=>{
-    console.log("Data on Bid eve ",data);
-    if(!data.user){
-      socket.emit("auth_error",{msg:"user not exists!"});
-    }
-    else{
-    let resp = await AuctionModel.find({Room:data.Code}).sort({_id:-1}).limit(1);
-    let res;
-    if(resp){
-      res = resp[0];
-    }
-    // console.log(res.Bid,data.bid);
-    if((res && res.Bid < data.bid) || (!res)){
-      console.log(resp.Bid,data.bid);
-        bid = data.bid;
-        // socket.broadcast.to(data.Code).emit("receive_bid",data);
-         io.sockets.in(data.Code).emit('receive_bid', {Bid:data.bid,User : data.user,Room : data.Code});
-         io.sockets.in(data.Code).emit("curr_bid",{Bid:data.bid,User : data.user,Room : data.Code});
-         await AuctionModel.create({Bid:data.bid,User : data.user,Room : data.Code});
-        // io.to(data.Code).emit('receive_bid',data);
-        // socket.to(data.Code).emit("receive_bid",data);
-    }
-    else{
-      console.log("Error",data.bid,resp.Bid);
-      socket.emit("error_bid",res);
-    }
-  }
-  })
-})
-
-
+AuctionServer.setupAuctionSocket = setupAuctionSocket;
 module.exports = AuctionServer;
-
-
-
-// To limit sockets per tab
-
-// Define a maximum limit of sockets per tab
-// const MAX_SOCKETS_PER_TAB = 5;
-
-// // Keep track of the number of sockets per tab
-// const socketsPerTab = {};
-
-// // When a socket connects, check if the tab has reached the limit
-// io.on('connection', (socket) => {
-//   const { id: socketId } = socket;
-//   const { tabId } = socket.handshake.query;
-
-//   // Increment the number of sockets for the tab
-//   socketsPerTab[tabId] = socketsPerTab[tabId] || 0;
-//   socketsPerTab[tabId]++;
-
-//   // If the limit has been reached, disconnect the socket
-//   if (socketsPerTab[tabId] > MAX_SOCKETS_PER_TAB) {
-//     socket.disconnect();
-//     return;
-//   }
-
-//   // Otherwise, add the socket to the room
-//   socket.join('roomName');
-  
-//   // When the socket disconnects, decrement the number of sockets for the tab
-//   socket.on('disconnect', () => {
-//     socketsPerTab[tabId]--;
-//   });
-// });
